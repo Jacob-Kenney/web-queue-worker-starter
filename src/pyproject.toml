@@ -8,6 +8,6 @@ dependencies = [
     "uvicorn",
     "celery",
     "redis",
-    "boto3",
+    "s3fs",
     "pydantic",
 ]
