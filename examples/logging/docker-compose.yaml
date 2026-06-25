@@ -1,14 +1,16 @@
-# Celery task queue environment
+# Centralized logging with EFK stack (Fluentd → Elasticsearch → Kibana)
 #
-# Services:
-#   api      - FastAPI app, publishes tasks via Celery
-#   worker   - Celery worker, consumes tasks, reads/writes MinIO
-#   rabbitmq - Message broker (Celery transport)
-#   redis    - Result backend (Celery results cache)
-#   minio    - S3-compatible object storage
-#
-# Only api:8000 exposed for host access.
-# Default credentials in .env.
+# All services route logs through Fluentd via Docker's fluentd logging driver.
+# Fluentd forwards to Elasticsearch for storage; Kibana provides visualization.
+# Only Kibana (5601) is exposed for host access to the web UI.
+
+# YAML Anchor for logging
+x-logging: &logging
+  driver: "fluentd"
+  options:
+    fluentd-address: fluentd:24224
+    tag: "docker-{{.Name}}-{{.ShortID}}"
+
 services:
   api:
     build:
@@ -25,6 +27,7 @@ services:
       - rabbitmq
       - redis
       - minio
+    logging: *logging
 
   worker:
     build:
@@ -40,6 +43,7 @@ services:
       - redis
       - minio
     restart: unless-stopped
+    logging: *logging
 
   # Message Queue
   rabbitmq:
@@ -57,6 +61,7 @@ services:
       interval: 10s
       timeout: 5s
       retries: 5
+    logging: *logging
 
   # Storage
   redis:
@@ -80,6 +85,7 @@ services:
       interval: 10s
       timeout: 5s
       retries: 5
+    logging: *logging
 
   minio:
     image: minio/minio
@@ -92,6 +98,40 @@ services:
       MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:-pass}
     volumes:
       - minio_data:/data
+    logging: *logging
+
+  # Logging
+  # On AWS, logging could be: cloudwatch, opentelemetry, prometheus, grafana
+  fluentd:
+    build: ./fluentd
+    ports:
+      - "24224:24224"
+      - "24224:24224/udp"
+    volumes:
+      - ./fluentd:/fluentd/etc
+    depends_on:
+      elasticsearch:
+        condition: service_healthy
+
+  elasticsearch:
+    image: elasticsearch:9.4.2
+    environment:
+      - discovery.type=single-node
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9200/_cluster/health"]
+      interval: 10s
+      retries: 5
+      timeout: 5s
+
+  kibana:
+    image: kibana:9.4.2
+    ports:
+      - "5601:5601"
+    environment:
+      ELASTICSEARCH_HOSTS: http://elasticsearch:9200
+    depends_on:
+      elasticsearch:
+        condition: service_healthy
 
 volumes:
   rabbitmq_data:
