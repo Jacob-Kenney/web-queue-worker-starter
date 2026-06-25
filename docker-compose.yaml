@@ -7,9 +7,8 @@
 #   redis    - Result backend (Celery results cache)
 #   minio    - S3-compatible object storage
 #
-# Internal network (no ports needed for inter-service communication)
-# Only api:8000 is exposed for host access.
-# Default credentials in .env or compose defaults (user/pass/root).
+# Only api:8000 exposed for host access.
+# Default credentials in .env.
 services:
   api:
     build:
